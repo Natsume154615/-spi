@@ -7,54 +7,41 @@ void MySPI_W_SS(uint8_t BitValue)
 	GPIO_WriteBit(GPIOA,GPIO_Pin_4,(BitAction)BitValue);
 }
 
-
-/*
-
-开启spi1时钟，APB2外设
-4号引脚还是软件模拟从机选择线
-5与7引脚配置为复用推挽输出给外设
-结构体配置SPI_InitTypeDef
-使能spi
-ss默认高电平
+void MySPI_W_SCK(uint8_t BitValue)
+{
+	GPIO_WriteBit(GPIOA,GPIO_Pin_5,(BitAction)BitValue);
+}	
 
 
-*/
+void MySPI_W_MOSI(uint8_t BitValue)
+{
+	GPIO_WriteBit(GPIOA,GPIO_Pin_7,(BitAction)BitValue);
+}
+
+uint8_t MySPI_R_MISO(void)
+{
+	return GPIO_ReadInputDataBit(GPIOA,GPIO_Pin_6);
+}
+
+
+
 void MySPI_Init(void)
 {
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1,ENABLE);//开启spi1时钟，APB2外设
 
 	GPIO_InitTypeDef GPIO_InitStruct;
 	GPIO_InitStruct.GPIO_Mode=GPIO_Mode_Out_PP;
-	GPIO_InitStruct.GPIO_Pin=GPIO_Pin_4;//4号引脚还是软件模拟从机选择线
+	GPIO_InitStruct.GPIO_Pin=GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_7;
 	GPIO_InitStruct.GPIO_Speed=GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA,&GPIO_InitStruct);
-	
-	GPIO_InitStruct.GPIO_Mode=GPIO_Mode_AF_PP ;
-	GPIO_InitStruct.GPIO_Pin=GPIO_Pin_5 | GPIO_Pin_7;//5与7引脚配置为复用推挽输出给外设
-	GPIO_InitStruct.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA,&GPIO_InitStruct);
-	
+
 	GPIO_InitStruct.GPIO_Mode=GPIO_Mode_IPU;
 	GPIO_InitStruct.GPIO_Pin=GPIO_Pin_6;
 	GPIO_InitStruct.GPIO_Speed=GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA,&GPIO_InitStruct);
-	
-	SPI_InitTypeDef SPI_InitTypeStruct;//结构体配置SPI_InitTypeDef
-	SPI_InitTypeStruct.SPI_BaudRatePrescaler=SPI_BaudRatePrescaler_128;//频率根据需求来
-	SPI_InitTypeStruct.SPI_CPHA=SPI_CPHA_1Edge;
-	SPI_InitTypeStruct.SPI_CPOL=SPI_CPOL_Low;
-	SPI_InitTypeStruct.SPI_CRCPolynomial=7;
-	SPI_InitTypeStruct.SPI_DataSize=SPI_DataSize_8b;
-	SPI_InitTypeStruct.SPI_Direction=SPI_Direction_2Lines_FullDuplex;
-	SPI_InitTypeStruct.SPI_FirstBit=SPI_FirstBit_MSB;
-	SPI_InitTypeStruct.SPI_Mode=SPI_Mode_Master;
-	SPI_InitTypeStruct.SPI_NSS=SPI_NSS_Soft;
-	SPI_Init(SPI1,&SPI_InitTypeStruct);
-	
-	SPI_Cmd(SPI1,ENABLE);//使能spi
 
 	MySPI_W_SS(1);
+	MySPI_W_SCK(0);
 }
 
 void MySPI_Start()
@@ -68,19 +55,44 @@ void MySPI_Stop()
 }
 
 /*
-读取标志位TXE为空
-写入数据
-读取标志位RXNE非空
-读取数据
+模式0，可根据相位图，改为模式1,2,3,就更改下面代码的顺序和sck是低为启动还是高位启动
+	MySPI_W_MOSI(ByteSend & ( 0x80 >> i ) );
+	MySPI_W_SCK(1);
+	两个变量，一个用于存放需要发送的数据
+	一个用于存放需要接收的数据
 */
 uint8_t MySPI_SwapByte(uint8_t ByteSend)
 {
+	uint8_t ReceiveData = 0x00,i;
+	for(i=0;i<8;i++)
+	{
+	MySPI_W_MOSI(ByteSend & ( 0x80 >> i ) );//发送数据
+	MySPI_W_SCK(1);
+	if(MySPI_R_MISO()) { ReceiveData |= ( 0x80 >> i );} ;//接收数据
+	MySPI_W_SCK(0);
+	}
 	
-	while( SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_TXE) != SET) ;
-	SPI_I2S_SendData(SPI1,ByteSend);
-	while( SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) != SET );
-	
-	return SPI_I2S_ReceiveData(SPI1);
+	return ReceiveData;
 }
+
+/*
+	一个变量，同时存放需要发送的数据和接收数据，更符合移位模型
+	发出高位左移接收数据存放到低位
+*/
+uint8_t MySPI_SwapByte_2(uint8_t ByteSend)
+{
+	uint8_t i;
+	for(i=0;i<8;i++)
+	{
+	MySPI_W_MOSI(ByteSend & 0x80  );//取最高位
+	ByteSend <<= 1 ;
+	MySPI_W_SCK(1);
+	if(MySPI_R_MISO()) { ByteSend |=  0x01 ;} ;//将数据依次存放到低位
+	MySPI_W_SCK(0);
+	}
+	
+	return ByteSend;
+}
+
 
 
