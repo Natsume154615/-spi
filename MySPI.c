@@ -77,7 +77,7 @@ uint8_t MySPI_SwapByte(uint8_t ByteSend)
 {
 	
 	while( SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_TXE) != SET) ;
-	SPI_I2S_SendData(SPI1,ByteSend);
+	SPI_I2S_SendData(SPI1,ByteSend);//内部只带等待忙状态结束
 	while( SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) != SET );
 	
 	return SPI_I2S_ReceiveData(SPI1);
